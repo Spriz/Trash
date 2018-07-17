@@ -1,4 +1,5 @@
 <?php
+
 namespace Muffin\Trash\Model\Behavior;
 
 use ArrayObject;
@@ -8,10 +9,12 @@ use Cake\Database\Expression\UnaryExpression;
 use Cake\Datasource\EntityInterface;
 use Cake\Event\Event;
 use Cake\I18n\Time;
+use Cake\Log\LogTrait;
 use Cake\ORM\Association;
 use Cake\ORM\Behavior;
 use Cake\ORM\Query;
 use Cake\ORM\Table;
+use Psr\Log\LogLevel;
 use RuntimeException;
 
 /**
@@ -20,6 +23,7 @@ use RuntimeException;
  */
 class TrashBehavior extends Behavior
 {
+    use LogTrait;
 
     /**
      * Default configuration.
@@ -135,7 +139,9 @@ class TrashBehavior extends Behavior
 
         foreach ($this->_table->associations() as $association) {
             if ($this->_isRecursable($association, $this->_table)) {
-                $association->cascadeDelete($entity, ['_primary' => false] + $options);
+                if (!$association->cascadeDelete($entity, ['_primary' => false] + $options)) {
+                    $this->log("Could not cascade to association: $association");
+                }
             }
         }
 
@@ -145,6 +151,8 @@ class TrashBehavior extends Behavior
         if ($this->_table->save($entity, $options)) {
             return true;
         }
+
+        $this->log('Could not soft-delete entity', LogLevel::ERROR, ['data' => json_encode($entity)]);
 
         return false;
     }
@@ -200,10 +208,12 @@ class TrashBehavior extends Behavior
      */
     public function findWithTrashed(Query $query, array $options)
     {
-        return $query->where(['OR' => [
-            $query->newExpr()->isNotNull($this->getTrashField()),
-            $query->newExpr()->isNull($this->getTrashField()),
-        ]]);
+        return $query->where([
+            'OR' => [
+                $query->newExpr()->isNotNull($this->getTrashField()),
+                $query->newExpr()->isNull($this->getTrashField()),
+            ],
+        ]);
     }
 
     /**
@@ -275,7 +285,8 @@ class TrashBehavior extends Behavior
                     $conditions = array_combine($foreignKey, $entity->extract($bindingKey));
 
                     foreach ($association->find('withTrashed')->where($conditions) as $related) {
-                        if (!$association->getTarget()->cascadingRestoreTrash($related, ['_primary' => false] + $options)) {
+                        if (!$association->getTarget()->cascadingRestoreTrash($related,
+                            ['_primary' => false] + $options)) {
                             $result = false;
                         }
                     }
