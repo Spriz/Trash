@@ -152,7 +152,7 @@ class TrashBehavior extends Behavior
             return true;
         }
 
-        $this->log('Could not soft-delete entity', LogLevel::ERROR, ['data' => json_encode($entity)]);
+        $this->log('Could not soft-delete entity: ' . json_encode($entity), LogLevel::ERROR, ['data' => json_encode($entity)]);
 
         return false;
     }
